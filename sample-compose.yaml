@@ -1,0 +1,64 @@
+services:
+  mosquitto:
+    image: "eclipse-mosquitto:latest"
+    ports:
+      - "127.0.0.1:1883:1883"
+    volumes:
+      - "./test/mqtt_conf:/mosquitto/config"
+      - "./test/mqtt_data:/mosquitto/data"
+      - "./test/mqtt_logs:/mosquitto/log"
+
+  postgres:
+    image: "postgres:latest"
+    shm_size: "128mb"
+    environment:
+      POSTGRES_USER: "djmkv"
+      POSTGRES_PASSWORD: "SwitchTheDisks!"
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - "./test/pgdata:/var/lib/postgresql/data:rw"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U djmkv" ]
+      interval: "5s"
+      timeout: "5s"
+      retries: 5
+
+  _djmkv_build:
+    image: "djmkv:testing"
+    build:
+      context: .
+      dockerfile: "Dockerfile"
+      args:
+        MAKEMKV_ACCEPT_EULA: "y"
+        #MAKEMKV_KEY: "YOUR KEY HERE!!!!!"  # set this to register and activate makemkv once
+    environment:
+      DB_STRING: "postgresql+psycopg://djmkv:SwitchTheDisks%21@postgres/djmkv"
+      MQTT_HOSTNAME: "mosquitto"
+      MQTT_USERNAME: "djmkv"
+      MQTT_PASSWORD: "djmkv"
+      MQTT_TOPIC_ROOT: "djmkv/"
+    depends_on:
+      mosquitto:
+        condition: "service_started"
+      postgres:
+        condition: "service_healthy"
+    dns:
+      - "1.1.1.1"
+      - "1.0.0.1"
+
+  # duplicate this block and change the service names and drive paths to process multiple drives
+  djmkv-1:
+    image: "djmkv:testing"
+    devices:
+      - "/dev/sr0:/dev/sr0"
+      - "/dev/sg0:/dev/sg0"
+    volumes:
+      - "./test/out:/djmkv/out/"
+    environment:
+      DRIVE_PATH: "/dev/sr0"
+      #_djmkv_build:
+        #condition: "service_started"
+    extends:
+      service: "_djmkv_build"
+    hostname: "djmkv-1"
